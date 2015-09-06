@@ -1,0 +1,116 @@
+
+	void AHRSUpdate (Vector3 a, Vector3 m, Vector3 g)
+	{
+		float ex, ey, ez;
+
+		//观测值
+		Quaternion qa = new Quaternion (a.x, a.y, a.z, 1);
+		Quaternion qm = new Quaternion (m.x, m.y, m.z, 1);
+		//归一化，纯方向
+		qa = Normalize (qa);
+		qm = Normalize (qm);
+
+		//计算加速度方向预估值
+		Quaternion qv = new Quaternion (2 * (q.x * q.z - q.w * q.y), 
+		                                2 * (q.w * q.x + q.y * q.z), 
+		                                (q.w * q.w + -q.x * q.x - q.y * q.y + q.z * q.z), 1);	
+
+		//计算磁场方向预估值
+		Quaternion qh = qm * q;	//
+		float nb = Mathf.Sqrt (qh.x * qh.x + qh.y * qh.y);
+		Quaternion qb = new Quaternion (nb, 0, qh.z, 1);
+		Quaternion qw = qb * q;	//
+
+		//预估值与观测量的残差
+		ex = (a.y * qv.z - a.z * qv.y) + (m.y * qw.z - m.z * qw.y);
+		ey = (a.z * qv.x - a.x * qv.z) + (m.z * qw.x - m.x * qw.z);
+		ez = (a.x * qv.y - a.y * qv.x) + (m.x * qw.y - m.y * qw.x);
+
+		exInt += ex * Ki;
+		eyInt += ey * Ki;
+		ezInt += ez * Ki;
+
+
+		//修正罗盘测量值，根据残差，KP为卡夫曼系数
+		g.x = g.x + Kp * ex + exInt;
+		g.y = g.y + Kp * ey + eyInt;
+		g.z = g.z + Kp * ez + ezInt;
+
+	
+
+		//对罗盘角速度积分，调整姿态数值q
+		q.w = q.w + (-q.x * g.x - q.y * g.y - q.z * g.z) * halfT;
+		q.x = q.x + (q.w * g.x + q.y * g.z - q.z * g.y) * halfT;
+		q.y = q.y + (q.w * g.y - q.x * g.z + q.z * g.x) * halfT;
+		q.z = q.z + (q.w * g.z + q.x * g.y - q.y * g.x) * halfT;
+
+		q = Normalize (q);
+	}
+
+========================================================================================
+
+	const float Kp = 2.0f;
+	const float Ki = 0.05f;
+	const float halfT = 0.01f;
+	float q0 = 1, q1 = 0, q2 = 0, q3 = 0;
+	float exInt = 0, eyInt = 0, ezInt = 0;
+
+
+	void AHRSupdate (Vector3 va, Vector3 vm, Vector3 vg)
+	{
+		float norm;
+		float hx, hy, hz, bx, bz;
+		float vx, vy, vz, wx, wy, wz;
+		float ex, ey, ez;
+
+		float q0q0 = q0 * q0;
+		float q0q1 = q0 * q1;
+		float q0q2 = q0 * q2;
+		float q0q3 = q0 * q3;
+		float q1q1 = q1 * q1;
+		float q1q2 = q1 * q2;
+		float q1q3 = q1 * q3;
+		float q2q2 = q2 * q2;
+		float q2q3 = q2 * q3;
+		float q3q3 = q3 * q3;
+
+	
+		hx = 2 * vm.x * (0.5f- q2q2 - q3q3) + 2 * vm.y * (q1q2 - q0q3) + 2 * vm.z * (q1q3 + q0q2);
+		hy = 2 * vm.x * (q1q2 + q0q3) + 2 * vm.y * (0.5f - q1q1 - q3q3) + 2 * vm.z * (q2q3 - q0q1);
+		hz = 2 * vm.x * (q1q3 - q0q2) + 2 * vm.y * (q2q3 + q0q1) + 2 * vm.z * (0.5f - q1q1 - q2q2);
+		bx = Mathf.Sqrt (hx * hx + hy * hy);
+		bz = hz;
+
+		vx = 2 * (q1q3 - q0q2);
+		vy = 2 * (q0q1 + q2q3);
+		vz = q0q0 - q1q1 - q2q2 - q3q3;
+		wx = 2 * bx * (0.5f - q2q2 - q3q3) + 2 * bz * (q1q3 - q0q2);
+		wy = 2 * bx * (q1q2 - q0q3) + 2 * bz * (q0q1 + q2q3);
+		wz = 2 * bx * (q0q2 + q1q3) + 2 * bz * (0.5f - q1q1 - q2q2);
+
+		ex = (va.y * vz - va.z * vy) + (vm.y * wz - vm.z * wy);
+		ey = (va.z * vx - va.x * vz) + (vm.z * wx - vm.x * wz);
+		ez = (va.x * vy - va.y * vx) + (vm.x * wy - vm.y * wx);
+
+		exInt = exInt + ex * Ki;
+		eyInt = eyInt + ey * Ki;
+		ezInt = ezInt + ez * Ki;
+
+		vg.x = vg.x + Kp * ex + exInt;
+		vg.y = vg.y + Kp * ey + eyInt;
+		vg.z = vg.z + Kp * ez + ezInt;
+
+		q0 = q0 + (-q1 * vg.x - q2 * vg.y - q3 * vg.z) * halfT;
+		q1 = q1 + (q0 * vg.x + q2 * vg.z - q3 * vg.y) * halfT;
+		q2 = q2 + (q0 * vg.y - q1 * vg.z + q3 * vg.x) * halfT;
+		q3 = q3 + (q0 * vg.z + q1 * vg.y - q2 * vg.x) * halfT;
+
+		norm = Mathf.Sqrt (q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3);
+		if (norm == 0)
+			return;
+		q0 = q0 / norm;
+		q1 = q1 / norm;
+		q2 = q2 / norm;
+		q3 = q3 / norm;
+
+	}
